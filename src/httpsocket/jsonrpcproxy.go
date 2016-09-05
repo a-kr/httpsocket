@@ -55,10 +55,10 @@ type ProxyParams struct {
 
 // Стандартные и не очень коды ошибок JSON-RPC
 const (
-	ErrCodeInvalidMethod = -32601
-	ErrCodeInternalError = -32603
-	ErrCodeBadGateway    = -502 // не смогли спроксировать запрос
-	ErrCodeGenericBadRequest    = 400
+	ErrCodeInvalidMethod     = -32601
+	ErrCodeInternalError     = -32603
+	ErrCodeBadGateway        = -502 // не смогли спроксировать запрос
+	ErrCodeGenericBadRequest = 400
 )
 
 type JsonWriter interface {
@@ -83,11 +83,12 @@ type JsonRpcRequest struct {
 }
 
 type JsonRpcResponse struct {
-	Result          json.RawMessage `json:"result,omitempty"`
-	Error           json.RawMessage `json:"error,omitempty"`
-	HttpStatus      int             `json:"http_status,omitempty"`
-	HttpContentType string          `json:"http_content_type,omitempty"`
-	Id              interface{}     `json:"id"`
+	Result               json.RawMessage `json:"result,omitempty"`
+	Error                json.RawMessage `json:"error,omitempty"`
+	HttpStatus           int             `json:"http_status,omitempty"`
+	HttpContentType      string          `json:"http_content_type,omitempty"`
+	UpstreamResponseTime float64         `json:"upstream_response_time_seconds,omitempty"`
+	Id                   interface{}     `json:"id"`
 }
 
 type JsonRpcError struct {
@@ -105,7 +106,7 @@ type JsonRpcLikeResponse struct {
 func (rq *JsonRpcRequest) MakeSimpleResponse(x interface{}) *JsonRpcResponse {
 	jx := MustMarshalJson(x)
 	return &JsonRpcResponse{
-		Id: rq.Id,
+		Id:     rq.Id,
 		Result: jx,
 	}
 }
@@ -186,12 +187,15 @@ func (c *ProxyClient) HandleRpcRequest(rq *JsonRpcRequest) {
 		httpRq.Header.Add("Content-Type", rqContentType)
 	}
 
+	t0 := time.Now()
 	httpResp, err := httpClient.Do(httpRq)
 	if err != nil {
 		c.SendError(rq, ErrCodeBadGateway, err.Error())
 		return
 	}
 	defer httpResp.Body.Close()
+
+	dt := time.Since(t0)
 
 	if rq.Id == nil { // запрос не требует ответа
 		return
@@ -200,9 +204,10 @@ func (c *ProxyClient) HandleRpcRequest(rq *JsonRpcRequest) {
 	respContentType := httpResp.Header.Get("Content-Type")
 
 	resp := &JsonRpcResponse{
-		Id:              rq.Id,
-		HttpStatus:      httpResp.StatusCode,
-		HttpContentType: respContentType,
+		Id:                   rq.Id,
+		HttpStatus:           httpResp.StatusCode,
+		HttpContentType:      respContentType,
+		UpstreamResponseTime: dt.Seconds(),
 	}
 
 	bs, err := ioutil.ReadAll(httpResp.Body)
