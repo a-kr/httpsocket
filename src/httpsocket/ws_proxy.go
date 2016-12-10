@@ -116,6 +116,7 @@ func (p *WsProxy) ServeWebsocket(w http.ResponseWriter, r *http.Request) {
 
 		now := time.Now()
 		client.statCounter.TickIfNeeded(now)
+		globalStatCounter.ThrottleIfNeeded(now, *throttleRps, *throttleConcurrentRequests)
 		client.statCounter.ThrottleIfNeeded(now, *throttleRpsPerClient, *throttleConcurrentRequestsPerClient)
 
 		if client.gotWriteError {

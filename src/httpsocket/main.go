@@ -15,6 +15,8 @@ var (
 	upstreamHostWhitelist               = flag.String("upstream-host-whitelist", "", "comma-separated list of allowed upstream hosts")
 	originWhitelist                     = flag.String("origin-whitelist", "", "comma-separated list of allowed origin hosts (suffixes)")
 	fakeUpstreamResponseTimeMs          = flag.Int("fake-upstream-response-time-ms", 0, "if greater than 0, instead of actually proxying requests, sleep for specified duration in milliseconds before returning a 502 Bad Gateway response")
+	throttleRps = flag.Int("throttle-rps", 0, "if greater than 0, total RPS will be limited to specified number (by blocking all clients for the remainder of current second once the limit is reached)")
+	throttleConcurrentRequests = flag.Int("throttle-concurrent-requests", 0, "if greater than 0, number of concurrent (in-flight) requests will be limited to specified number (by blocking all clients for the remainder of current second once the limit is reached)")
 	throttleRpsPerClient                = flag.Int("throttle-rps-per-client", 50, "if greater than 0, RPS per client will be limited to specified number (by blocking for the remainder of current second once the limit is reached)")
 	throttleConcurrentRequestsPerClient = flag.Int("throttle-concurrent-requests-per-client", 10, "if greater than 0, number of concurrent (in-flight) requests per client will be limited to specified number (by blocking for the remainder of current second once the limit is reached)")
 	logConnections                      = flag.Bool("log-connections", false, "log connection opening/closing")

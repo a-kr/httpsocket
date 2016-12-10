@@ -9,6 +9,7 @@ import (
 // Счетчики числа событий в секунду, числа активных соединений/запросов, и ограничители
 type StatCounter struct {
 	parentCounter              *StatCounter
+	tickLoopRunning            bool
 	unixtime                   int64
 	connectionAttemptsPerSec   int64
 	connectionsPerSec          int64
@@ -27,6 +28,7 @@ func NewStatCounter(parentCounter *StatCounter) *StatCounter {
 }
 
 func (sc *StatCounter) TickingLoop() {
+	sc.tickLoopRunning = true
 	for now := range time.Tick(1 * time.Second) {
 		nowUnix := now.Unix()
 		scCopy := sc.Tick(nowUnix)
@@ -129,5 +131,7 @@ func (sc *StatCounter) throttle(now time.Time) {
 	remainingNs := NanosecondsPerSecond - nowNs + 1
 	time.Sleep(time.Duration(remainingNs) * time.Nanosecond)
 	newNow := time.Now()
-	sc.TickIfNeeded(newNow)
+	if !sc.tickLoopRunning {
+		sc.TickIfNeeded(newNow)
+	}
 }
