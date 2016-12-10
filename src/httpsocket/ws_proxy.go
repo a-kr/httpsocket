@@ -113,6 +113,16 @@ func (p *WsProxy) ServeWebsocket(w http.ResponseWriter, r *http.Request) {
 			}
 			break
 		}
+
+		now := time.Now()
+		client.statCounter.TickIfNeeded(now)
+		client.statCounter.ThrottleIfNeeded(now, *throttleRpsPerClient, *throttleConcurrentRequestsPerClient)
+
+		if client.gotWriteError {
+			break
+		}
+
+		client.statCounter.RequestStarted()
 		go client.HandleRpcRequest(&rq)
 
 		conn.SetReadDeadline(time.Now().Add(ReadDeadline))

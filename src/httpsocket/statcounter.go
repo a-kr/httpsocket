@@ -8,14 +8,15 @@ import (
 
 // Счетчики числа событий в секунду, числа активных соединений/запросов, и ограничители
 type StatCounter struct {
-	parentCounter            *StatCounter
-	unixtime                 int64
-	connectionAttemptsPerSec int64
-	connectionsPerSec        int64
-	activeConnections        int64
-	requestsPerSec           int64
-	responsesPerSec          int64
-	activeRequests           int64
+	parentCounter              *StatCounter
+	unixtime                   int64
+	connectionAttemptsPerSec   int64
+	connectionsPerSec          int64
+	throttledConnectionsPerSec int64
+	activeConnections          int64
+	requestsPerSec             int64
+	responsesPerSec            int64
+	activeRequests             int64
 }
 
 func NewStatCounter(parentCounter *StatCounter) *StatCounter {
@@ -32,8 +33,8 @@ func (sc *StatCounter) TickingLoop() {
 		if scCopy.activeConnections == 0 && scCopy.requestsPerSec == 0 && scCopy.responsesPerSec == 0 {
 			continue
 		}
-		log.Printf("New conns per sec: %d; Active conns: %d; RPS: %d; Handled RPS: %d; Active requests: %d",
-			scCopy.connectionsPerSec, scCopy.activeConnections,
+		log.Printf("New conns per sec: %d; Active conns: %d; Throttled conns: %d; RPS: %d; Handled RPS: %d; Active requests: %d",
+			scCopy.connectionsPerSec, scCopy.activeConnections, scCopy.throttledConnectionsPerSec,
 			scCopy.requestsPerSec, scCopy.responsesPerSec, scCopy.activeRequests)
 	}
 }
@@ -46,12 +47,21 @@ func (sc *StatCounter) Tick(unixtime int64) *StatCounter {
 	// counters
 	scCopy.connectionAttemptsPerSec = atomic.SwapInt64(&sc.connectionAttemptsPerSec, 0)
 	scCopy.connectionsPerSec = atomic.SwapInt64(&sc.connectionsPerSec, 0)
+	scCopy.throttledConnectionsPerSec = atomic.SwapInt64(&sc.throttledConnectionsPerSec, 0)
 	scCopy.requestsPerSec = atomic.SwapInt64(&sc.requestsPerSec, 0)
 	scCopy.responsesPerSec = atomic.SwapInt64(&sc.responsesPerSec, 0)
 	// gauges
 	scCopy.activeConnections = atomic.LoadInt64(&sc.activeConnections)
 	scCopy.activeRequests = atomic.LoadInt64(&sc.activeRequests)
 	return scCopy
+}
+
+func (sc *StatCounter) TickIfNeeded(t time.Time) {
+	nowUnix := t.Unix()
+	prevUnix := atomic.SwapInt64(&sc.unixtime, nowUnix)
+	if prevUnix < nowUnix {
+		sc.Tick(nowUnix)
+	}
 }
 
 func (sc *StatCounter) ConnectionAttempt() {
@@ -90,4 +100,34 @@ func (sc *StatCounter) RequestFinished() {
 	if sc.parentCounter != nil {
 		sc.parentCounter.RequestFinished()
 	}
+}
+
+func (sc *StatCounter) ConnectionThrottled() {
+	atomic.AddInt64(&sc.throttledConnectionsPerSec, 1)
+	if sc.parentCounter != nil {
+		sc.parentCounter.ConnectionThrottled()
+	}
+}
+
+// Проверить превышение счетчиков за текущую секунду.
+// Заснуть до наступления следующей секунды при превышении.
+func (sc *StatCounter) ThrottleIfNeeded(now time.Time, rpsLimit int, activeRequestsLimit int) {
+	if rpsLimit > 0 && int64(rpsLimit) <= atomic.LoadInt64(&sc.requestsPerSec) {
+		sc.throttle(now)
+	} else if activeRequestsLimit > 0 && int64(activeRequestsLimit) <= atomic.LoadInt64(&sc.activeRequests) {
+		sc.throttle(now)
+	}
+}
+
+const (
+	NanosecondsPerSecond = 1000000000
+)
+
+func (sc *StatCounter) throttle(now time.Time) {
+	sc.ConnectionThrottled()
+	nowNs := now.Nanosecond()
+	remainingNs := NanosecondsPerSecond - nowNs + 1
+	time.Sleep(time.Duration(remainingNs) * time.Nanosecond)
+	newNow := time.Now()
+	sc.TickIfNeeded(newNow)
 }

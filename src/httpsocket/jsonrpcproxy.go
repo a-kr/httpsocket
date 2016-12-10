@@ -71,7 +71,8 @@ type ProxyClient struct {
 	originalRequest *http.Request // исходный HTTP-запрос от клиента
 	xRealIp         string        // какой заголовок X-Real-IP проставлять в проксируемых запросах
 	conn            JsonWriter    // куда следует писать JSON-ответ
-	writeLock       sync.Mutex
+	writeLock       sync.Mutex    // блокировка на запись в conn
+	gotWriteError   bool          // поймали хотя бы одну ошибку при записи в conn?
 	statCounter     *StatCounter
 }
 
@@ -118,13 +119,11 @@ var (
 
 // Обработать один HTTP-запрос
 func (c *ProxyClient) HandleRpcRequest(rq *JsonRpcRequest) {
+	defer c.statCounter.RequestFinished()
 	defer simpleRecover()
 	if c.handleSpecialMethod(rq) {
 		return
 	}
-	// TODO: implement rate limiter here
-	c.statCounter.RequestStarted()
-	defer c.statCounter.RequestFinished()
 
 	methodAndUrl := strings.SplitN(rq.Method, " ", 2)
 	if len(methodAndUrl) != 2 {
@@ -302,10 +301,10 @@ func (c *ProxyClient) Send(rq *JsonRpcRequest, x *JsonRpcResponse) {
 
 	err := c.conn.WriteJSON(x)
 	if err != nil {
-		if strings.Contains(err.Error(), "use of closed network connection") {
-			return
+		c.gotWriteError = true
+		if *logClientIoErrors {
+			c.LogErrorf("Write: %s", err)
 		}
-		c.LogErrorf("Write: %s", err)
 	}
 }
 
