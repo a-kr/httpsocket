@@ -15,6 +15,7 @@ var (
 	upstreamHostWhitelist      = flag.String("upstream-host-whitelist", "", "comma-separated list of allowed upstream hosts")
 	originWhitelist            = flag.String("origin-whitelist", "", "comma-separated list of allowed origin hosts (suffixes)")
 	fakeUpstreamResponseTimeMs = flag.Int("fake-upstream-response-time-ms", 0, "if greater than 0, instead of actually proxying requests, sleep for specified duration in milliseconds before returning a 502 Bad Gateway response")
+	logConnections             = flag.Bool("log-connections", false, "log connection opening/closing")
 	debug                      = flag.Bool("debug", false, "enable more detailed logging")
 )
 
@@ -62,6 +63,8 @@ func main() {
 	httpHandleFunc("/", handleFrontpage)
 	httpHandleFunc("/ws", proxy.ServeWebsocket)
 	httpHandleFunc("/jsonrpc", proxy.ServeHttp)
+
+	go globalStatCounter.TickingLoop()
 
 	log.Printf("Listening on %s...", *listenAddr)
 	log.Fatal(http.ListenAndServe(*listenAddr, nil))

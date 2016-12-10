@@ -72,6 +72,7 @@ type ProxyClient struct {
 	xRealIp         string        // какой заголовок X-Real-IP проставлять в проксируемых запросах
 	conn            JsonWriter    // куда следует писать JSON-ответ
 	writeLock       sync.Mutex
+	statCounter     *StatCounter
 }
 
 // Форматы запросов-ответов JSON-RPC
@@ -121,6 +122,10 @@ func (c *ProxyClient) HandleRpcRequest(rq *JsonRpcRequest) {
 	if c.handleSpecialMethod(rq) {
 		return
 	}
+	// TODO: implement rate limiter here
+	c.statCounter.RequestStarted()
+	defer c.statCounter.RequestFinished()
+
 	methodAndUrl := strings.SplitN(rq.Method, " ", 2)
 	if len(methodAndUrl) != 2 {
 		c.SendError(rq, ErrCodeInvalidMethod, "malformed method")
@@ -297,6 +302,9 @@ func (c *ProxyClient) Send(rq *JsonRpcRequest, x *JsonRpcResponse) {
 
 	err := c.conn.WriteJSON(x)
 	if err != nil {
+		if strings.Contains(err.Error(), "use of closed network connection") {
+			return
+		}
 		c.LogErrorf("Write: %s", err)
 	}
 }

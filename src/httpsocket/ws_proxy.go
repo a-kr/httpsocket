@@ -35,6 +35,10 @@ var upgrader = websocket.Upgrader{
 	},
 }
 
+var (
+	globalStatCounter = NewStatCounter(nil)
+)
+
 // Проверка, пускать ли клиента к вебсокету, на основе заголовка Origin
 func (p *WsProxy) CheckOrigin(r *http.Request) bool {
 	if len(p.params.WhitelistedOrigins) == 0 {
@@ -54,6 +58,8 @@ func (p *WsProxy) ServeWebsocket(w http.ResponseWriter, r *http.Request) {
 	ip, _, err := net.SplitHostPort(r.RemoteAddr)
 	dieOnError(err)
 
+	globalStatCounter.ConnectionAttempt()
+
 	if !p.CheckOrigin(r) {
 		log.Printf("WARN: request from non-whitelisted origin: `%s`", r.Header.Get("Origin"))
 		http.Error(w, "Forbidden", http.StatusForbidden)
@@ -68,9 +74,14 @@ func (p *WsProxy) ServeWebsocket(w http.ResponseWriter, r *http.Request) {
 		originalRequest: r,
 		xRealIp:         ip,
 		conn:            conn,
+		statCounter:     NewStatCounter(globalStatCounter),
 	}
-	client.LogInfof("Connected")
-	defer client.LogInfof("Disconnected")
+	if *logConnections {
+		client.LogInfof("Connected")
+		defer client.LogInfof("Disconnected")
+	}
+	globalStatCounter.OpenedConnection()
+	defer globalStatCounter.ClosedConnection()
 
 	conn.SetReadLimit(MessageSizeLimit)
 	conn.SetReadDeadline(time.Now().Add(ReadDeadline))
@@ -97,7 +108,9 @@ func (p *WsProxy) ServeWebsocket(w http.ResponseWriter, r *http.Request) {
 			if websocket.IsCloseError(err, websocket.CloseGoingAway, websocket.CloseNormalClosure) {
 				break
 			}
-			client.LogErrorf("On read: %s", err)
+			if *logConnections {
+				client.LogErrorf("On read: %s", err)
+			}
 			break
 		}
 		go client.HandleRpcRequest(&rq)
