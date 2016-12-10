@@ -9,12 +9,13 @@ import (
 )
 
 var (
-	listenAddr            = flag.String("listen", ":6066", "host:port to listen on")
-	defaultHost           = flag.String("default-host", "", "if not empty, requests without specified host will be proxied to this host")
-	defaultTimeout        = flag.Int("timeout-seconds", 60, "timeout for proxied HTTP requests, in seconds")
-	upstreamHostWhitelist = flag.String("upstream-host-whitelist", "", "comma-separated list of allowed upstream hosts")
-	originWhitelist       = flag.String("origin-whitelist", "", "comma-separated list of allowed origin hosts (suffixes)")
-	debug                 = flag.Bool("debug", false, "enable more detailed logging")
+	listenAddr                 = flag.String("listen", ":6066", "host:port to listen on")
+	defaultHost                = flag.String("default-host", "", "if not empty, requests without specified host will be proxied to this host")
+	defaultTimeout             = flag.Int("timeout-seconds", 60, "timeout for proxied HTTP requests, in seconds")
+	upstreamHostWhitelist      = flag.String("upstream-host-whitelist", "", "comma-separated list of allowed upstream hosts")
+	originWhitelist            = flag.String("origin-whitelist", "", "comma-separated list of allowed origin hosts (suffixes)")
+	fakeUpstreamResponseTimeMs = flag.Int("fake-upstream-response-time-ms", 0, "if greater than 0, instead of actually proxying requests, sleep for specified duration in milliseconds before returning a 502 Bad Gateway response")
+	debug                      = flag.Bool("debug", false, "enable more detailed logging")
 )
 
 // Оборачиваем хендлер-функцию в стандартные миддлвари

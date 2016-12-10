@@ -111,6 +111,10 @@ func (rq *JsonRpcRequest) MakeSimpleResponse(x interface{}) *JsonRpcResponse {
 	}
 }
 
+var (
+	FakeUpstreamResponse = fmt.Errorf("Fake upstream response")
+)
+
 // Обработать один HTTP-запрос
 func (c *ProxyClient) HandleRpcRequest(rq *JsonRpcRequest) {
 	defer simpleRecover()
@@ -188,7 +192,15 @@ func (c *ProxyClient) HandleRpcRequest(rq *JsonRpcRequest) {
 	}
 
 	t0 := time.Now()
-	httpResp, err := httpClient.Do(httpRq)
+	var httpResp *http.Response
+
+	if *fakeUpstreamResponseTimeMs > 0 {
+		time.Sleep(time.Duration(*fakeUpstreamResponseTimeMs) * time.Millisecond)
+		err = FakeUpstreamResponse
+	} else {
+		httpResp, err = httpClient.Do(httpRq)
+	}
+
 	if err != nil {
 		c.SendError(rq, ErrCodeBadGateway, err.Error())
 		return
@@ -265,7 +277,9 @@ func (c *ProxyClient) handleSpecialMethod(rq *JsonRpcRequest) bool {
 
 // Отправить клиенту сообщение об ошибке
 func (c *ProxyClient) SendError(rq *JsonRpcRequest, errCode int, errMessage string) {
-	c.LogWarnf("SendError(%s, %d, %s)", rq.Method, errCode, errMessage)
+	if errMessage != FakeUpstreamResponse.Error() {
+		c.LogWarnf("SendError(%s, %d, %s)", rq.Method, errCode, errMessage)
+	}
 	jerr := MustMarshalJson(&JsonRpcError{
 		Code:    errCode,
 		Message: errMessage,
@@ -326,6 +340,7 @@ func (c *ProxyClient) makeXRequestId(url string) string {
 }
 
 // Общий для всех HTTP-клиент, через который идут проксируемые запросы
+// TODO: отдельные таймауты на GET и на другие запросы
 var (
 	httpClient *http.Client
 )
