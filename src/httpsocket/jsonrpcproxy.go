@@ -205,13 +205,14 @@ func (c *ProxyClient) HandleRpcRequest(rq *JsonRpcRequest) {
 		httpResp, err = httpClient.Do(httpRq)
 	}
 
+	dt := time.Since(t0)
+
 	if err != nil {
-		c.SendError(rq, ErrCodeBadGateway, err.Error())
+		c.SendErrorWithTime(rq, ErrCodeBadGateway, err.Error(), dt.Seconds())
 		return
 	}
 	defer httpResp.Body.Close()
 
-	dt := time.Since(t0)
 
 	if rq.Id == nil { // запрос не требует ответа
 		return
@@ -280,7 +281,7 @@ func (c *ProxyClient) handleSpecialMethod(rq *JsonRpcRequest) bool {
 }
 
 // Отправить клиенту сообщение об ошибке
-func (c *ProxyClient) SendError(rq *JsonRpcRequest, errCode int, errMessage string) {
+func (c *ProxyClient) SendErrorWithTime(rq *JsonRpcRequest, errCode int, errMessage string, respTime float64) {
 	if errMessage != FakeUpstreamResponse.Error() {
 		c.LogWarnf("SendError(%s, %d, %s)", rq.Method, errCode, errMessage)
 	}
@@ -289,9 +290,14 @@ func (c *ProxyClient) SendError(rq *JsonRpcRequest, errCode int, errMessage stri
 		Message: errMessage,
 	})
 	c.Send(rq, &JsonRpcResponse{
-		Error: json.RawMessage(jerr),
-		Id:    rq.Id, // может быть пустым, но ошибку все равно нужно отправить
+		Error:                json.RawMessage(jerr),
+		Id:                   rq.Id, // может быть пустым, но ошибку все равно нужно отправить
+		UpstreamResponseTime: respTime,
 	})
+}
+
+func (c *ProxyClient) SendError(rq *JsonRpcRequest, errCode int, errMessage string) {
+	c.SendErrorWithTime(rq, errCode, errMessage, 0.0)
 }
 
 // Отправить сообщение клиенту
